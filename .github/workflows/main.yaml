@@ -26,7 +26,8 @@ jobs:
       - name: authenticating tailscale
         run: |
           echo "linking to tailscale network..."
-          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes
+          # تم إضافة خيار --unattended لضمان استقرار الخدمة في الخلفية
+          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes --unattended
           echo "authentication successful."
 
       - name: disabling password policy
@@ -45,10 +46,11 @@ jobs:
           echo "configuring registry and firewall..."
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+          
+          # تم تغيير القيمة إلى 0 لتعطيل الـ NLA لضمان قبول الاتصال من جميع الأجهزة بدون مشاكل
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 0
           
           echo "rdp protocol enabled."
-          exit 0
 
       - name: maintaining connection
         run: |
@@ -57,6 +59,7 @@ jobs:
           echo "username: runneradmin"
           echo "password: ${{ github.event.inputs.password }}"
           echo "internal ip address:"
+          # سيطبع لك الـ IP الخاص بك مباشرة في الـ Logs لتنسخه
           & "c:\program files\tailscale\tailscale.exe" ip -4
           echo "=========================================="
           while ($true) {
