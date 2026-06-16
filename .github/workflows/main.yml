@@ -1,0 +1,29 @@
+name: github rdp tailscale edition
+on:
+  workflow_dispatch:
+    inputs:
+      password:
+        description: 'set rdp password'
+        required: true
+        default: 'Atay@Bna3na3#2026'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: initializing environment
+        run: echo "starting server deployment..."
+
+      - name: installing tailscale
+        run: |
+          echo "downloading tailscale..."
+          invoke-webrequest -uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -outfile 'tailscale.exe'
+          start-process -filepath "tailscale.exe" -argumentlist "/quiet" -wait
+          echo "waiting for service..."
+          start-sleep -seconds 15
+          echo "tailscale setup complete."
+
+      - name: authenticating tailscale
+        run: |
+          echo "linking to tailscale network..."
+          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept
