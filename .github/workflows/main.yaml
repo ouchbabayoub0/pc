@@ -12,10 +12,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: initializing environment
-        run: |
-          echo "starting server deployment..."
-          # تعيين كلمة المرور التي اخترتها لحساب الـ runner الحالي لتتمكن من الدخول عبر الـ RDP
-          net user runneradmin "${{ github.event.inputs.password }}"
+        run: echo "starting server deployment..."
 
       - name: installing tailscale
         run: |
@@ -29,15 +26,40 @@ jobs:
       - name: authenticating tailscale
         run: |
           echo "linking to tailscale network..."
-          # تم تصحيح الخيار هنا وإضافة خيار عدم قطع الاتصال بعد تسجيل خروج المستخدم (unattended) للويندوز
-          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes --unattended
+          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes
+          echo "authentication successful."
 
-      - name: Keep Alive & RDP Ready
+      - name: disabling password policy
         run: |
-          echo "=========================================================="
-          echo "Server is live on Tailscale as: cloud-rdp-server"
-          echo "User: runneradmin"
-          echo "Password: ${{ github.event.inputs.password }}"
-          echo "=========================================================="
-          # هذا الأمر يمنع السيرفر من الإغلاق ويجعله يعمل لمدة 6 ساعات (21600 ثانية) لتتمكن من استخدامه براحتك
-          Start-Sleep -Seconds 21600
+          echo "killing windows password complexity requirements..."
+          secedit /export /cfg config.inf
+          (get-content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | set-content config.inf
+          secedit /configure /db $env:temp\temp.sdb /cfg config.inf /areas SECURITYPOLICY
+          echo "policy disabled."
+
+      - name: configuring remote desktop
+        run: |
+          echo "setting up user credentials..."
+          net user runneradmin "${{ github.event.inputs.password }}" /y
+          
+          echo "configuring registry and firewall..."
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+          
+          echo "rdp protocol enabled."
+          exit 0
+
+      - name: maintaining connection
+        run: |
+          echo "=========================================="
+          echo "server is live"
+          echo "username: runneradmin"
+          echo "password: ${{ github.event.inputs.password }}"
+          echo "internal ip address:"
+          & "c:\program files\tailscale\tailscale.exe" ip -4
+          echo "=========================================="
+          while ($true) {
+            echo "keep-alive: $(get-date)"
+            start-sleep -seconds 300
+          }
