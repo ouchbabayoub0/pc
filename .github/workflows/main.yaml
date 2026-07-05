@@ -1,69 +1,65 @@
-name: GitHub RDP Tailscale Edition (with Docker)
-
+Name: github rdp tailscale edition
 on:
   workflow_dispatch:
     inputs:
       password:
-        description: 'Set RDP Password'
+        description: 'set rdp password'
         required: true
         default: 'Atay@Bna3na3#2026'
 
 jobs:
   build:
-    runs-on: ubuntu-latest # تحويل إلى Ubuntu لدعم Docker و RDP معاً بكفاءة
+    runs-on: windows-latest
     steps:
-      - name: Initializing Environment
-        run: echo "Starting Linux Desktop deployment with Docker..."
+      - name: initializing environment
+        run: echo "starting server deployment..."
 
-      # 1. تثبيت الـ Desktop Environment (XFCE خفيف وسريع) وسيرفر RDP (Xrdp)
-      - name: Installing Desktop & RDP
+      - name: installing tailscale
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xfce4 xfce4-goodies xrdp
-          # ضبط الـ RDP عشان يستخدم واجهة XFCE
-          echo "xfce4-session" > ~/.xsession
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
-          # فتح بورت الـ RDP في جدار الحماية المحلي
-          sudo ufw allow 3389/tcp
+          echo "downloading tailscale..."
+          invoke-webrequest -uri 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -outfile 'tailscale.exe'
+          start-process -filepath "tailscale.exe" -argumentlist "/quiet" -wait
+          echo "waiting for service..."
+          start-sleep -seconds 15
+          echo "tailscale setup complete."
 
-      # 2. تثبيت وتجهيز Docker الأصيل
-      - name: Installing Docker
+      - name: authenticating tailscale
         run: |
-          sudo apt-get install -y docker.io
-          sudo systemctl start docker
-          sudo systemctl enable docker
-          # إضافة المستخدم الحالي لجروب Docker عشان تشغله بدون sudo مستقبلاً
-          sudo usermod -aG docker $USER
-          echo "🐳 Docker installed successfully!"
+          echo "linking to tailscale network..."
+          & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes
+          echo "authentication successful."
 
-      # 3. تثبيت وتوصيل Tailscale
-      - name: Connecting to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TS_KEY }}
-          args: --hostname=cloud-linux-rdp --accept-routes
-
-      # 4. إعداد حساب المستخدم والـ Password للـ RDP
-      - name: Configuring Remote Desktop Credentials
+      - name: disabling password policy
         run: |
-          # تغيير باسوورد المستخدم الحالي (runner)
-          echo "runner:${{ github.event.inputs.password }}" | sudo chpasswd
-          echo "Credentials configured successfully."
+          echo "killing windows password complexity requirements..."
+          secedit /export /cfg config.inf
+          (get-content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | set-content config.inf
+          secedit /configure /db $env:temp\temp.sdb /cfg config.inf /areas SECURITYPOLICY
+          echo "policy disabled."
 
-      # 5. الحفاظ على الاتصال وطباعة الـ IP
-      - name: Maintaining Connection
+      - name: configuring remote desktop
         run: |
-          echo "=========================================="
-          echo "Server is LIVE via Tailscale!"
-          echo "Username: runner"
-          echo "Password: ${{ github.event.inputs.password }}"
-          echo "Your Tailscale IP Address:"
-          tailscale ip -4
-          echo "=========================================="
+          echo "setting up user credentials..."
+          net user runneradmin "${{ github.event.inputs.password }}" /y
           
-          # حلقة Keep-Alive لمنع السيرفر من الإغلاق (لمدة 6 ساعات)
-          while true; do
-            echo "Keep-alive: $(date)"
-            sleep 300
-          done
+          echo "configuring registry and firewall..."
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+          
+          echo "rdp protocol enabled."
+          exit 0
+
+      - name: maintaining connection
+        run: |
+          echo "=========================================="
+          echo "server is live"
+          echo "username: runneradmin"
+          echo "password: ${{ github.event.inputs.password }}"
+          echo "internal ip address:"
+          & "c:\program files\tailscale\tailscale.exe" ip -4
+          echo "=========================================="
+          while ($true) {
+            echo "keep-alive: $(get-date)"
+            start-sleep -seconds 300
+          }
