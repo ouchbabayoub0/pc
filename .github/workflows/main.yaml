@@ -1,4 +1,4 @@
-Name: github rdp tailscale edition
+name: github rdp tailscale edition
 on:
   workflow_dispatch:
     inputs:
@@ -22,13 +22,11 @@ jobs:
           echo "waiting for service..."
           start-sleep -seconds 15
           echo "tailscale setup complete."
-
       - name: authenticating tailscale
         run: |
           echo "linking to tailscale network..."
           & "c:\program files\tailscale\tailscale.exe" up --authkey=${{ secrets.TS_KEY }} --hostname=cloud-rdp-server --accept-routes
           echo "authentication successful."
-
       - name: disabling password policy
         run: |
           echo "killing windows password complexity requirements..."
@@ -36,7 +34,6 @@ jobs:
           (get-content config.inf) -replace 'PasswordComplexity = 1', 'PasswordComplexity = 0' | set-content config.inf
           secedit /configure /db $env:temp\temp.sdb /cfg config.inf /areas SECURITYPOLICY
           echo "policy disabled."
-
       - name: configuring remote desktop
         run: |
           echo "setting up user credentials..."
@@ -49,7 +46,6 @@ jobs:
           
           echo "rdp protocol enabled."
           exit 0
-
       - name: maintaining connection
         run: |
           echo "=========================================="
